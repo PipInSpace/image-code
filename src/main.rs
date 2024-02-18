@@ -1,19 +1,10 @@
 use image::io::Reader as ImgReader;
+use std::fs;
 
 mod rand;
 
 const STARTING_POS: (usize, usize) = (4, 4);
-const BITS_PER_CELL: u8 = 3; // Max pixel baseline diff: 7
-const DATA: &str = "Dolores amet minima autem doloremque perferendis. Et exercitationem nulla repellendus nobis voluptatem. Soluta iusto consequatur autem. Similique asperiores porro natus et. Pariatur amet eum corrupti alias et expedita provident placeat. Facere ipsam incidunt nostrum delectus et tempora et corrupti.
-
-Et tenetur vero quis tempore quibusdam. Fuga facilis asperiores placeat rem recusandae hic velit. Error expedita beatae odio veritatis et saepe soluta.
-
-Excepturi quia beatae sed veniam quia. In qui aut optio suscipit laudantium. Maxime nam voluptatem velit incidunt alias possimus dolor laudantium. Iste mollitia ex consectetur ut et. Ab dolores excdasdepdturi ullam omnis tenetur non eveniet dolorum.
-
-Id illo aut cumque consectetur dolores. Quod quis sunt nihil quas et. Cupiditate omnis doloremque vero optio eos et temporibus. Ipsum asperiores repellendus voluptas qui veritatis. Dolore non sunt labore. Commodi voluptatem quae qui et repellendus in odit dolores.
-
-Eum sed eum voluptatibus at rem sunt doloremque aut. Et dolores vel nihil a et. Voluptatem molestiae molestiae laboriosam et placeat nobis sequi eum. Ab itaque ea qui similique vitae. Culpa possimus atque et perferendis aperiam.
-";
+const BITS_PER_PX: u8 = 5; // Maximum value: 7. Max pixel baseline diff: 2^B_P_C - 1
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -21,13 +12,30 @@ fn main() {
         println!("Please specify a file");
         std::process::exit(0)
     }
+    if BITS_PER_PX > 7 {
+        panic!("BITS_PER_PX needs to be smaller than 8. (There are only 8 Bit in a pixel)");
+    }
 
-    encode(&args);
-    decode(&args);
+    if args.contains(&"-d".to_string()) {
+        println!("Decoding...");
+        decode(&args);
+    } else if args.contains(&"-e".to_string()) {
+        println!("Encoding...");
+        if args.len() < 3 {
+            println!("Please specify an input file");
+            std::process::exit(0)
+        }
+        let input: Vec<u8> = fs::read(&args[2]).unwrap();
+        println!("Writing {} into {}", args[2], args[1]);
+        encode(&args, input);
+    } else {
+        println!("No flag specified, decoding...");
+        decode(&args);
+    }
 }
 
 fn decode(args: &Vec<String>) {
-    let img = ImgReader::open("ion_enc.png").expect(" ").decode().unwrap().into_rgb8();
+    let img = ImgReader::open(&args[1]).expect(" ").decode().unwrap().into_rgb8();
     let img_bytes = img.clone().into_raw();
     let dims = (img.width() as usize, img.height() as usize);
     let xs = dims.0;
@@ -39,7 +47,7 @@ fn decode(args: &Vec<String>) {
     let mut pxs = img_bytes.get_pixels(dims, STARTING_POS, xs);
     let mut rgb_d: [i32; 3] = u8_3_to_i8_3(pxs[0]);
     let mut cur_pos: (usize, usize) = STARTING_POS;
-    let mut i = 0;
+    let mask = 1 << (BITS_PER_PX-1);
     while !(rgb_d[1] == 0 && rgb_d[2] == 0) {
         rgb_d = difference(pxs);
         if rgb_d[1] == 0 && rgb_d[2] == 0 {
@@ -50,18 +58,22 @@ fn decode(args: &Vec<String>) {
         cur_pos = wrapping_coords(cur_pos, dims, (rgb_d[1], rgb_d[2]));
         pxs = img_bytes.get_pixels(dims, cur_pos, xs);
 
-        for i in 0..BITS_PER_CELL {
-            bitstream.push((rgb_d[0] & 4>>i) != 0);
+        for i in 0..BITS_PER_PX {
+            bitstream.push((rgb_d[0].abs() & mask>>i) != 0);
         }
     }
     //println!("Ended sequence at: {:?}", cur_pos);
     //println!("Bit stream: {:?}", bitstream);
-    let bytes: Vec<u8> = bitstream_to_bytes(bitstream);
+    let mut bytes: Vec<u8> = bitstream_to_bytes(bitstream);
+    bytes.pop();
     let string = String::from_utf8_lossy(&bytes);
-    println!("Data string: \"{}\"", string)
+    println!("--- Data ---\n{}\n--- End Data ---", string);
+
+    let name = args[1].split('.').nth(0).expect("Should have name");
+    fs::write(format!("{}.dat", name), bytes).unwrap();
 }
 
-fn encode(args: &Vec<String>) {
+fn encode(args: &Vec<String>, input: Vec<u8>) {
     let img = ImgReader::open(&args[1]).expect(" ").decode().unwrap().into_rgb8();
     let mut img_bytes = img.clone().into_raw();
     let dims = (img.width() as usize, img.height() as usize);
@@ -69,46 +81,49 @@ fn encode(args: &Vec<String>) {
     let bytes_per_px = img_bytes.len() / (dims.0 * dims.1);
     println!("Image dims: {:?}\nBuffer len: {}\nBytes per pixel: {}", dims, img_bytes.len(), bytes_per_px);
 
-    let bytes: Vec<u8> = DATA.to_string().as_bytes().to_vec();
-    let mut bitstream: Vec<bool> = bytes_to_bitstream(&bytes);
-    //println!("Data \"{:?}\" as bitstream: {:?}", bytes, bitstream);
-
+    let mut bitstream: Vec<bool> = bytes_to_bitstream(&input);
     
     let mut cur_pos: (usize, usize) = STARTING_POS;
-    let mut rng = rand::RandU64::new(Some(0));
-    let mut blocked_px: Vec<bool> = vec![false; dims.0*dims.1];
+    let mut rng = rand::RandU64::new(None);
+    let mut blocked_px: Vec<bool> = vec![false; dims.0*dims.1]; // Do not overwrite pixels/pixel baseline values
+
+    let mask: u8 = (1 << BITS_PER_PX) - 1;
 
     while bitstream.len() > 0 {
         // Prep data channel
         let mut bits: Vec<bool> = vec![];
-        for _ in 0..BITS_PER_CELL {
+        for _ in 0..BITS_PER_PX {
             if bitstream.len() > 0 {
                 bits.push(bitstream.remove(0));
             }
         }
         let mut px_bits = 0;
         for (i, bit) in bits.iter().enumerate() {
-            px_bits += (*bit as u8) << (BITS_PER_CELL-1-i as u8);
+            px_bits += (*bit as u8) << (BITS_PER_PX-1-i as u8);
         }
 
-        // Set new pixel
+        // Create new pixel
+        // Data (r) channel
         let pxs = img_bytes.get_pixels(dims, cur_pos, xs);
         let baseline = get_baseline(pxs);
         let mut px_r = baseline[0];
         if (px_r as u32 + px_bits as u32) > 255 {
-            px_r -= px_bits-1;
+            px_r = px_r - px_bits;
         } else {
             px_r += px_bits;
         }
+
+        // Next pixel offset (g & b) channels
         let mut px_g = baseline[1];
         let mut px_b = baseline[2];
         let mut px_g_off = 0;
         let mut px_b_off = 0;
         let mut valid_px = false;
+        let mut c = 0;
         while !valid_px {
             px_g = baseline[1];
             px_b = baseline[2];
-            let (r1, r2) = (rng.next() as u8 & 0b_0000_0111, rng.next() as u8 & 0b_0000_0111);
+            let (r1, r2) = (rng.next() as u8 & mask, rng.next() as u8 & mask);
             //println!("{:#05b}, {:#05b}", r1, r2);
             px_g_off = std::cmp::max(r1, 1) as i32;
             px_b_off = std::cmp::max(r2, 1) as i32;
@@ -124,7 +139,12 @@ fn encode(args: &Vec<String>) {
             } else {
                 px_b += px_b_off as u8;
             }
-            valid_px = check_diff_validity(cur_pos, dims, (px_g_off, px_b_off), xs, &mut blocked_px)
+            valid_px = check_diff_validity(cur_pos, dims, (px_g_off, px_b_off), xs, &mut blocked_px);
+            c += 1;
+            if c > 1000 {
+                println!("WARNING! Unable to create file, all pixels blocked.\n    Is the data to big?\n    Is the BITS_PER_PX constant too low?");
+                break;
+            }
         }
         
         
@@ -140,7 +160,8 @@ fn encode(args: &Vec<String>) {
     img_bytes.set_pixel(baseline, cur_pos, xs);
 
     let img = image::RgbImage::from_raw(dims.0 as u32, dims.1 as u32, img_bytes).unwrap();
-    img.save("ion_enc.png").unwrap();
+    let name = args[1].split('.').nth(0).expect("Should have name");
+    img.save(format!("{}_enc.png", name)).unwrap();
 
 }
 
@@ -232,9 +253,7 @@ fn check_diff_validity(pos: (usize, usize), dims: (usize, usize), diff: (i32, i3
     let ind3 = crd_to_ind1(scrds[3].0, scrds[3].1, xs);
     let ind4 = crd_to_ind1(scrds[4].0, scrds[4].1, xs);
     let is_blocked = blocked[ind0]; //|| blocked[ind1] || blocked[ind2] || blocked[ind3] || blocked[ind4];
-    if is_blocked {
-        println!("Pixel blocked")
-    } else {
+    if !is_blocked {
         blocked[ind0] = true;
         blocked[ind1] = true;
         blocked[ind2] = true;
