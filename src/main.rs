@@ -12,8 +12,8 @@ fn main() {
         println!("Please specify a file");
         std::process::exit(0)
     }
-    if BITS_PER_PX > 7 {
-        panic!("BITS_PER_PX needs to be smaller than 8. (There are only 8 Bit in a pixel)");
+    if BITS_PER_PX > 7 || BITS_PER_PX == 0 {
+        panic!("BITS_PER_PX needs to be in range from 1-7. (There are only 8 Bit in a pixel)");
     }
 
     if args.contains(&"-d".to_string()) {

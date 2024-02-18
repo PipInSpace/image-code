@@ -1,6 +1,6 @@
 # About
 
-image-code can be used to encode and decode data into images without disturbing the original image content.
+image-code can be used to encode and decode data into images without disturbing the original image content (too much).
 The output image stores endoded data in the R-channel pixels, G- and B-channels point to the next pixel in the data sequence.
 image-code encodes this data as a difference from the average of the 4 surrounding pixels, so pixels usually remain close to their original colour in pictures (but disturbance may be visible in very flat or artificial images).
 
