@@ -22,9 +22,7 @@ Replace the strings with the path to your files.
 
 This README file was encoded into the following image (`STARTING_POS`: (4, 4), `BITS_PER_PX`: 4). Shown is the base image, the image with encoded data and the data noise (amplified)
 
-<a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion.png?raw=true" width="33%"></a>
-<a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_enc.png?raw=true" width="33%"></a>
-<a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_data_noise_amplified.png?raw=true" width="33%"></a>
+<a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion.png?raw=true" width="33.3333%"></a><a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_enc.png?raw=true" width="33.3333%"></a><a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_data_noise_amplified.png?raw=true" width="33.3333%"></a>
 <img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion.png?raw=true" width="100%">
 
 The base image<br><br>
