@@ -4,7 +4,7 @@ use std::fs;
 mod rand;
 
 const STARTING_POS: (usize, usize) = (4, 4);
-const BITS_PER_PX: u8 = 5; // Maximum value: 7. Max pixel baseline diff: 2^B_P_C - 1
+const BITS_PER_PX: u8 = 4; // Maximum value: 7. Max pixel baseline diff: 2^B_P_C - 1
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -54,7 +54,7 @@ fn decode(args: &Vec<String>) {
     let mut bitstream: Vec<bool> = vec![];
 
     let mut pxs = img_bytes.get_pixels(dims, STARTING_POS, xs);
-    let mut rgb_d: [i32; 3] = u8_3_to_i8_3(pxs[0]);
+    let mut rgb_d: [i32; 3] = [0, -1, -1];
     let mut cur_pos: (usize, usize) = STARTING_POS;
     let mask = 1 << (BITS_PER_PX - 1);
     while !(rgb_d[1] == 0 && rgb_d[2] == 0) {
@@ -182,19 +182,25 @@ fn encode(args: &Vec<String>, input: Vec<u8>) {
     img.save(format!("{}_enc.png", name)).unwrap();
 }
 
+/// Turn a coordinate into an index from the x-axis lenght
+fn crd_to_ind(x: usize, y: usize, xs: usize) -> usize {
+    y * xs + x
+}
+
 pub trait ImageBytes {
     fn get_pixels(&self, dims: (usize, usize), crd: (usize, usize), xs: usize) -> [[u8; 3]; 5];
     fn set_pixel(&mut self, px: [u8; 3], crd: (usize, usize), xs: usize);
 }
 
 impl ImageBytes for Vec<u8> {
+    /// Returns the 5 pixels around the coordinate
     fn get_pixels(&self, dims: (usize, usize), crd: (usize, usize), xs: usize) -> [[u8; 3]; 5] {
         let scrds = surrounding_coords(dims, crd);
-        let x0y0 = crd_to_ind3(scrds[0].0, scrds[0].1, xs);
-        let x1y0 = crd_to_ind3(scrds[1].0, scrds[1].1, xs);
-        let x2y0 = crd_to_ind3(scrds[2].0, scrds[2].1, xs);
-        let x0y1 = crd_to_ind3(scrds[3].0, scrds[3].1, xs);
-        let x0y2 = crd_to_ind3(scrds[4].0, scrds[4].1, xs);
+        let x0y0 = crd_to_ind(scrds[0].0, scrds[0].1, xs)*3;
+        let x1y0 = crd_to_ind(scrds[1].0, scrds[1].1, xs)*3;
+        let x2y0 = crd_to_ind(scrds[2].0, scrds[2].1, xs)*3;
+        let x0y1 = crd_to_ind(scrds[3].0, scrds[3].1, xs)*3;
+        let x0y2 = crd_to_ind(scrds[4].0, scrds[4].1, xs)*3;
         [
             [self[x0y0], self[x0y0 + 1], self[x0y0 + 2]],
             [self[x1y0], self[x1y0 + 1], self[x1y0 + 2]],
@@ -204,14 +210,16 @@ impl ImageBytes for Vec<u8> {
         ]
     }
 
+    /// Sets the pixel at crd
     fn set_pixel(&mut self, px: [u8; 3], crd: (usize, usize), xs: usize) {
-        let ind = crd_to_ind3(crd.0, crd.1, xs);
+        let ind = crd_to_ind(crd.0, crd.1, xs)*3;
         self[ind] = px[0];
         self[ind + 1] = px[1];
         self[ind + 2] = px[2];
     }
 }
 
+/// Calculates a pixels RGB difference to it's baseline
 fn difference(pxs: [[u8; 3]; 5]) -> [i32; 3] {
     let baseline = get_baseline(pxs);
     [
@@ -221,6 +229,7 @@ fn difference(pxs: [[u8; 3]; 5]) -> [i32; 3] {
     ]
 }
 
+/// Returns the average RGB values of the 4 surrounding pixels around the coordinate
 fn get_baseline(pxs: [[u8; 3]; 5]) -> [u8; 3] {
     let mut r: u32 = 0;
     let mut g: u32 = 0;
@@ -233,10 +242,11 @@ fn get_baseline(pxs: [[u8; 3]; 5]) -> [u8; 3] {
     [(r / 4) as u8, (g / 4) as u8, (b / 4) as u8]
 }
 
+/// Turns a coordinate and an offset into a new coordinate (Wraps around at the image ends)
 fn wrapping_coords(pos: (usize, usize), dims: (usize, usize), diff: (i32, i32)) -> (usize, usize) {
     let mut pos: (i32, i32) = (pos.0 as i32, pos.1 as i32);
-    pos.0 += diff.0 * 2;
-    pos.1 += diff.1 * 2;
+    pos.0 += (diff.0 as f32 * 1.7) as i32;
+    pos.1 += (diff.1 as f32 * 1.7) as i32;
     if pos.0 < 0 {
         pos.0 += dims.0 as i32
     }
@@ -250,6 +260,7 @@ fn wrapping_coords(pos: (usize, usize), dims: (usize, usize), diff: (i32, i32)) 
     )
 }
 
+/// Returns the 4 surrounding coordinates around a pixel, and it's own coordinate (Wraps around at the image ends)
 fn surrounding_coords(dims: (usize, usize), crd: (usize, usize)) -> [(usize, usize); 5] {
     let x0 = crd.0 == 0;
     let y0 = crd.1 == 0;
@@ -264,6 +275,8 @@ fn surrounding_coords(dims: (usize, usize), crd: (usize, usize)) -> [(usize, usi
     ]
 }
 
+/// Tests if a newly created offset to a new data pixel is blocked already.
+/// If the position is valid/not blocked, this method blocks the surrounding 5 pixels and returns true 
 fn check_diff_validity(
     pos: (usize, usize),
     dims: (usize, usize),
@@ -273,11 +286,11 @@ fn check_diff_validity(
 ) -> bool {
     let crd = wrapping_coords(pos, dims, diff);
     let scrds = surrounding_coords(dims, crd);
-    let ind0 = crd_to_ind1(scrds[0].0, scrds[0].1, xs);
-    let ind1 = crd_to_ind1(scrds[1].0, scrds[1].1, xs);
-    let ind2 = crd_to_ind1(scrds[2].0, scrds[2].1, xs);
-    let ind3 = crd_to_ind1(scrds[3].0, scrds[3].1, xs);
-    let ind4 = crd_to_ind1(scrds[4].0, scrds[4].1, xs);
+    let ind0 = crd_to_ind(scrds[0].0, scrds[0].1, xs);
+    let ind1 = crd_to_ind(scrds[1].0, scrds[1].1, xs);
+    let ind2 = crd_to_ind(scrds[2].0, scrds[2].1, xs);
+    let ind3 = crd_to_ind(scrds[3].0, scrds[3].1, xs);
+    let ind4 = crd_to_ind(scrds[4].0, scrds[4].1, xs);
     let is_blocked = blocked[ind0]; //|| blocked[ind1] || blocked[ind2] || blocked[ind3] || blocked[ind4];
     if !is_blocked {
         blocked[ind0] = true;
@@ -289,10 +302,7 @@ fn check_diff_validity(
     !is_blocked
 }
 
-fn u8_3_to_i8_3(x: [u8; 3]) -> [i32; 3] {
-    [x[0] as i32, x[1] as i32, x[2] as i32]
-}
-
+/// Turns a vector of boolean bits into u8 bytes
 fn bitstream_to_bytes(bits: Vec<bool>) -> Vec<u8> {
     let mut bytes: Vec<u8> = vec![];
     let mut byte: u8 = 0;
@@ -313,6 +323,7 @@ fn bitstream_to_bytes(bits: Vec<bool>) -> Vec<u8> {
     bytes
 }
 
+/// Turns a vector of u8 bytes into boolean bits
 fn bytes_to_bitstream(bytes: &Vec<u8>) -> Vec<bool> {
     let mut bits: Vec<bool> = vec![];
     for byte in bytes {
@@ -321,12 +332,4 @@ fn bytes_to_bitstream(bytes: &Vec<u8>) -> Vec<bool> {
         }
     }
     bits
-}
-
-fn crd_to_ind3(x: usize, y: usize, xs: usize) -> usize {
-    (y * xs + x) * 3
-}
-
-fn crd_to_ind1(x: usize, y: usize, xs: usize) -> usize {
-    y * xs + x
 }
