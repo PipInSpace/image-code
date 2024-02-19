@@ -17,3 +17,24 @@ To run the program use the following commands:
     cargo run "endoded_image" -d        (Decodes "encoded_image" into encoded_image.dat)
 
 Replace the strings with the path to your files.
+
+# Example
+
+This README file was encoded into the following image (`STARTING_POS`: (4, 4), `BITS_PER_PX`: 4). Shown is the base image, the image with encoded data and the data noise (amplified)
+
+<a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion.png?raw=true" width="33%"></a>
+<a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_enc.png?raw=true" width="33%"></a>
+<a><img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_data_noise_amplified.png?raw=true" width="33%"></a>
+<img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion.png?raw=true" width="100%">
+
+The base image<br><br>
+
+<img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_enc.png?raw=true" width="100%">
+
+The image with the encoded data<br><br>
+
+<img src="https://github.com/PipInSpace/image-code/blob/main/examples/ion_data_noise_amplified.png?raw=true" width="100%">
+
+The data pixels extracted and brightened<br><br>
+
+Image source: https://commons.wikimedia.org/wiki/File:Ion_Engine_Test_Firing_-_GPN-2000-000482.jpg
